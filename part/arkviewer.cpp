@@ -29,6 +29,7 @@
 #include <KMessageBox>
 #include <KParts/ReadOnlyPart>
 #include <KParts/OpenUrlArguments>
+#include <KParts/PartLoader>
 #include <KXMLGUIFactory>
 
 #include <QFile>
@@ -179,18 +180,15 @@ bool ArkViewer::viewInInternalViewer(const QString& fileName, const QMimeType &m
     m_iconLabel->setPixmap(QIcon::fromTheme(mimeType.iconName()).pixmap(style()->pixelMetric(QStyle::PixelMetric::PM_SmallIconSize)));
     m_commentLabel->setText(mimeType.comment());
 
-    // Create the ReadOnlyPart instance.
-    m_part = KMimeTypeTrader::self()->createPartInstanceFromQuery<KParts::ReadOnlyPart>(mimeType.name(), this, this);
+    const QVector<KPluginMetaData> offers = KParts::PartLoader::partsForMimeType(mimeType.name());
 
     // Drop the KHTMLPart, if necessary.
-    const KService::Ptr service = KMimeTypeTrader::self()->preferredService(mimeType.name(), QStringLiteral("KParts/ReadOnlyPart"));
-    qCDebug(ARK) << "Preferred service for mimetype" << mimeType.name() << "is" << service->library();
-    if (service.constData()->desktopEntryName() == QLatin1String("khtml")) {
-        KService::List offers = KMimeTypeTrader::self()->query(mimeType.name(), QStringLiteral("KParts/ReadOnlyPart"));
-        offers.removeFirst();
-        qCDebug(ARK) << "Removed KHTMLPart from the offers for mimetype" << mimeType.name()
-                     << ". Using" << offers.first().constData()->desktopEntryName() << "instead.";
-        m_part = offers.first().constData()->createInstance<KParts::ReadOnlyPart>(this, this);
+    if (offers.first().name() != QLatin1String("KHTML")) {
+        KPluginLoader loader(offers.first().fileName());
+        m_part = loader.factory()->create<KParts::ReadOnlyPart>(this, this);
+    } else if (offers.size() > 1) {
+        KPluginLoader loader(offers.at(1).fileName());
+        m_part = loader.factory()->create<KParts::ReadOnlyPart>(this, this);
     }
 
     if (!m_part.data()) {
